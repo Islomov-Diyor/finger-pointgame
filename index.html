@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qo'l bilan O'yin</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+  #container { position: relative; width: 100vw; height: 100vh; }
+  canvas {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  #videoCanvas { z-index: 1; }
+  #gameCanvas  { z-index: 2; }
+
+  #ui {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 3; pointer-events: none;
+  }
+
+  .screen {
+    position: absolute; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.82);
+    color: #fff; text-align: center; padding: 20px;
+    overflow-y: auto;
+  }
+  .screen h1 { font-size: clamp(1.8rem,5vw,4rem); margin-bottom: 12px; }
+  .screen h2 { font-size: clamp(1.3rem,3.5vw,2.5rem); margin-bottom: 10px; }
+  .screen p  { font-size: clamp(0.85rem,1.8vw,1.2rem); opacity: 0.85; margin-bottom: 6px; }
+  .screen .sub { font-size: clamp(0.7rem,1.4vw,1rem); opacity: 0.6; }
+  .btn {
+    margin-top: 18px; padding: 12px 36px;
+    font-size: 1.1rem; border: 2px solid #00ffcc;
+    background: transparent; color: #00ffcc;
+    border-radius: 8px; cursor: pointer;
+    pointer-events: all; transition: background 0.2s, color 0.2s;
+  }
+  .btn:hover { background: #00ffcc; color: #000; }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+  /* Instructions panel */
+  .instr-box {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(0,255,204,0.2);
+    border-radius: 12px;
+    padding: 16px 24px;
+    margin: 12px 0;
+    max-width: 620px;
+    width: 90%;
+    text-align: left;
+  }
+  .instr-box h3 { color: #00ffcc; font-size: 0.95rem; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  .instr-box ul { list-style: none; padding: 0; }
+  .instr-box ul li { font-size: clamp(0.75rem,1.4vw,0.9rem); opacity: 0.8; margin-bottom: 5px; padding-left: 14px; position: relative; }
+  .instr-box ul li::before { content: '›'; position: absolute; left: 0; color: #00ffcc; }
+  .bullet-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+  .bl-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; opacity: 0.8; }
+  .bl-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Level intro extra info */
+  .level-tip { font-size: clamp(0.75rem,1.3vw,0.95rem); opacity: 0.65; margin-top: 6px; font-style: italic; }
+
+  #startScreen .title-glow { color: #00ffcc; text-shadow: 0 0 30px #00ffcc, 0 0 60px #00ffcc44; }
+  #levelIntroScreen h2 { color: #ffe066; text-shadow: 0 0 20px #ffe066; }
+  #levelUpScreen h1 { color: #00ffcc; text-shadow: 0 0 30px #00ffcc; }
+  #gameOverScreen h1 { color: #ff4444; text-shadow: 0 0 30px #ff4444; }
+  #victoryScreen h1  { color: #ffd700; text-shadow: 0 0 30px #ffd700, 0 0 60px #ffd70044; }
+
+  #countdownScreen { background: rgba(0,0,0,0.5); }
+  #countdownScreen .count-num {
+    font-size: clamp(6rem,20vw,16rem); font-weight: 900;
+    color: #00ffcc; text-shadow: 0 0 60px #00ffcc, 0 0 120px #00ffcc44;
+    line-height: 1;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 18px; left: 0; right: 0;
+    display: flex; align-items: flex-start;
+    justify-content: space-between; padding: 0 24px;
+    pointer-events: none;
+  }
+  #hud-lives { display: flex; gap: 8px; align-items: center; }
+  .heart { font-size: 1.8rem; filter: drop-shadow(0 0 6px #ff4444); transition: transform 0.2s; }
+  .heart.lost { opacity: 0.2; filter: none; }
+  #hud-level { color: #ffe066; font-size: 1.1rem; font-weight: 700; text-shadow: 0 0 10px #ffe066; text-align: center; }
+  #hud-score { color: #00ffcc; font-size: 1.1rem; font-weight: 700; text-shadow: 0 0 10px #00ffcc; text-align: right; }
+
+  #no-hand-warn {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    color: #ff9900; font-size: 0.95rem; opacity: 0; transition: opacity 0.4s;
+    text-shadow: 0 0 8px #ff9900; pointer-events: none; white-space: nowrap;
+  }
+
+  /* Instructions modal toggle */
+  #instrBtn {
+    position: absolute; bottom: 16px; right: 16px;
+    padding: 8px 18px; font-size: 0.85rem;
+    border: 1px solid rgba(0,255,204,0.4);
+    background: rgba(0,255,204,0.08); color: #00ffcc;
+    border-radius: 6px; cursor: pointer; pointer-events: all;
+    z-index: 5;
+  }
+  #instrModal {
+    display: none;
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.9); z-index: 10; overflow-y: auto;
+    flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 40px 20px;
+    color: #fff;
+  }
+  #instrModal.open { display: flex; }
+  #instrModal h2 { color: #00ffcc; font-size: 1.6rem; margin-bottom: 20px; }
+  #instrModal .close-btn { margin-top: 20px; }
+</style>
+</head>
+<body>
+<div id="container">
+  <canvas id="videoCanvas"></canvas>
+  <canvas id="gameCanvas"></canvas>
+
+  <div id="ui">
+    <div id="hud" style="display:none">
+      <div id="hud-lives">
+        <span class="heart" id="h1">❤️</span>
+        <span class="heart" id="h2">❤️</span>
+        <span class="heart" id="h3">❤️</span>
+      </div>
+      <div id="hud-level">Daraja 1</div>
+      <div id="hud-score">Ball: 0</div>
+    </div>
+
+    <!-- START SCREEN -->
+    <div class="screen" id="startScreen">
+      <h1 class="title-glow">✋ Qo'l Bilan O'yin</h1>
+      <p class="sub">8 ta daraja • 3 ta hayot • 30 soniya har bir daraja</p>
+
+      <div class="instr-box">
+        <h3>🎮 Qanday O'ynash Kerak</h3>
+        <ul>
+          <li>Ko'rsatkich barmog'ingizni kameraga ko'rsating</li>
+          <li>Barmog'ingizni harakatlantiring — o'yinchi ergashadi</li>
+          <li>Uchib kelayotgan o'q-dorilardan qoching</li>
+          <li>Yaqin o'tkazish uchun +5 bonus ball olasiz</li>
+          <li>Agar o'q tegsa — 1 ta hayot yo'qoladi</li>
+        </ul>
+      </div>
+
+      <div class="instr-box">
+        <h3>🔴 O'q-Dori Turlari</h3>
+        <div class="bullet-legend">
+          <div class="bl-item"><div class="bl-dot" style="background:#ff3333;box-shadow:0 0 6px #ff3333"></div> To'g'ri — qizil</div>
+          <div class="bl-item"><div class="bl-dot" style="background:#ff8c00;box-shadow:0 0 6px #ff8c00"></div> Kuzatuvchi — to'q sariq</div>
+          <div class="bl-item"><div class="bl-dot" style="background:#cc44ff;box-shadow:0 0 6px #cc44ff"></div> Spiral — binafsha</div>
+          <div class="bl-item"><div class="bl-dot" style="background:#ff3399;box-shadow:0 0 6px #ff3399"></div> Yomg'ir — pushti</div>
+        </div>
+      </div>
+
+      <div class="instr-box">
+        <h3>📋 Darajalar</h3>
+        <ul>
+          <li>Daraja 1–2: Sekin to'g'ri o'q-dorilar</li>
+          <li>Daraja 3: Ikki tomondan hujum</li>
+          <li>Daraja 4: Kuzatuvchi o'q-dorilar</li>
+          <li>Daraja 5: Aralash hujum</li>
+          <li>Daraja 6: Spiral o'q-dorilar</li>
+          <li>Daraja 7: Yomg'ir rejimi</li>
+          <li>Daraja 8: Barcha turlar — xo'jayin to'lqini!</li>
+        </ul>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="startBtn">▶ O'yinni Boshlash</button>
+      </div>
+    </div>
+
+    <!-- COUNTDOWN -->
+    <div class="screen" id="countdownScreen" style="display:none">
+      <div class="count-num" id="countNum">3</div>
+    </div>
+
+    <!-- LEVEL INTRO -->
+    <div class="screen" id="levelIntroScreen" style="display:none">
+      <h2 id="levelIntroTitle">Daraja 1</h2>
+      <p id="levelIntroDesc">Sekin o'q-dorilar</p>
+      <p class="level-tip" id="levelIntroTip"></p>
+    </div>
+
+    <!-- LEVEL UP -->
+    <div class="screen" id="levelUpScreen" style="display:none">
+      <h1>🎉 Daraja Oshdi!</h1>
+      <p id="levelUpMsg">Daraja 2 boshlanmoqda...</p>
+    </div>
+
+    <!-- GAME OVER -->
+    <div class="screen" id="gameOverScreen" style="display:none">
+      <h1>O'yin Tugadi 💀</h1>
+      <p id="goScore">Ballingiz: 0</p>
+      <p id="goHigh">Eng yuqori ball: 0</p>
+      <div class="btn-row">
+        <button class="btn" id="restartBtn">Qayta Boshlash</button>
+        <button class="btn" id="goInstrBtn" style="border-color:#ffe066;color:#ffe066">Qo'llanma</button>
+      </div>
+    </div>
+
+    <!-- VICTORY -->
+    <div class="screen" id="victoryScreen" style="display:none">
+      <h1>🏆 G'olib bo'ldingiz!</h1>
+      <p>Barcha 8 ta darajani yakunladingiz!</p>
+      <p id="vicScore">Ballingiz: 0</p>
+      <p id="vicHigh">Eng yuqori ball: 0</p>
+      <div class="btn-row">
+        <button class="btn" id="vicRestartBtn">Qayta Boshlash</button>
+      </div>
+    </div>
+
+    <div id="no-hand-warn">⚠️ Qo'l aniqlanmadi — barmog'ingizni ko'rsating</div>
+
+    <!-- In-game instructions button -->
+    <button id="instrBtn" style="display:none">❓ Qo'llanma</button>
+  </div>
+
+  <!-- Instructions modal (usable anytime) -->
+  <div id="instrModal">
+    <h2>📖 O'yin Qo'llanmasi</h2>
+    <div class="instr-box">
+      <h3>🎮 Boshqaruv</h3>
+      <ul>
+        <li>Ko'rsatkich barmog'ingizni ekranga ko'rsating</li>
+        <li>Barmog'ingiz = o'yinchi harakati</li>
+        <li>Hech qanday tugma kerak emas!</li>
+      </ul>
+    </div>
+    <div class="instr-box">
+      <h3>🔴 O'q-Dori Turlari</h3>
+      <div class="bullet-legend">
+        <div class="bl-item"><div class="bl-dot" style="background:#ff3333;box-shadow:0 0 6px #ff3333"></div> To'g'ri — qizil</div>
+        <div class="bl-item"><div class="bl-dot" style="background:#ff8c00;box-shadow:0 0 6px #ff8c00"></div> Kuzatuvchi — to'q sariq (sizni ta'qib qiladi!)</div>
+        <div class="bl-item"><div class="bl-dot" style="background:#cc44ff;box-shadow:0 0 6px #cc44ff"></div> Spiral — binafsha (markazdan chiqadi)</div>
+        <div class="bl-item"><div class="bl-dot" style="background:#ff3399;box-shadow:0 0 6px #ff3399"></div> Yomg'ir — pushti (yuqoridan tushadi)</div>
+      </div>
+    </div>
+    <div class="instr-box">
+      <h3>⭐ Ball Tizimi</h3>
+      <ul>
+        <li>Har soniya: +1 ball (yashab qolish uchun)</li>
+        <li>Yaqin o'tkazish: +5 ball (o'qni yaqin o'tkazish)</li>
+        <li>Daraja tugashi: +200 bonus ball</li>
+        <li>Eng yuqori ball qurilmangizda saqlanadi</li>
+      </ul>
+    </div>
+    <div class="instr-box">
+      <h3>💡 Maslahatlar</h3>
+      <ul>
+        <li>Kuzatuvchi o'qlardan doira chizib qoching</li>
+        <li>Spiral o'qlardan chetga qarab yuring</li>
+        <li>Yomg'ir rejimida pastdan yuqoriga harakat qiling</li>
+        <li>Zarba yeyishda 1.5 soniya himoya beriladi</li>
+      </ul>
+    </div>
+    <button class="btn close-btn" id="instrModalClose">✕ Yopish</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script>
+// ─── CANVAS SETUP ────────────────────────────
+const videoCanvas = document.getElementById('videoCanvas');
+const gameCanvas  = document.getElementById('gameCanvas');
+const vctx = videoCanvas.getContext('2d');
+const gctx = gameCanvas.getContext('2d');
+
+function resizeCanvases() {
+  videoCanvas.width = gameCanvas.width = window.innerWidth;
+  videoCanvas.height = gameCanvas.height = window.innerHeight;
+}
+resizeCanvases();
+window.addEventListener('resize', resizeCanvases);
+
+// ─── WEB AUDIO SOUND ENGINE ──────────────────
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function playTone(freq, type, duration, volume, startTime, fadeOut) {
+  const ctx = getAudio();
+  const t = startTime ?? ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, t);
+  gain.gain.setValueAtTime(volume ?? 0.15, t);
+  if (fadeOut !== false) gain.gain.exponentialRampToValueAtTime(0.0001, t + duration);
+  osc.start(t);
+  osc.stop(t + duration + 0.05);
+}
+
+function sfxHit() {
+  // low thud + noise burst
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  playTone(80, 'sawtooth', 0.25, 0.18, t);
+  playTone(55, 'square',   0.3,  0.12, t + 0.03);
+  // short noise
+  const buf = ctx.createBuffer(1, ctx.sampleRate * 0.15, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*0.3;
+  const src = ctx.createBufferSource();
+  const g = ctx.createGain();
+  src.buffer = buf;
+  src.connect(g); g.connect(ctx.destination);
+  g.gain.setValueAtTime(0.25, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t+0.15);
+  src.start(t);
+}
+
+function sfxNearMiss() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  playTone(800, 'sine', 0.12, 0.06, t);
+  playTone(600, 'sine', 0.1,  0.04, t + 0.05);
+}
+
+function sfxCountdownBeep(isGo) {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  if (isGo) {
+    playTone(880, 'sine', 0.25, 0.18, t);
+    playTone(1320,'sine', 0.2,  0.14, t+0.08);
+  } else {
+    playTone(440, 'sine', 0.18, 0.14, t);
+  }
+}
+
+function sfxLevelUp() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  [523,659,784,1047].forEach((f,i) => playTone(f,'sine',0.2,0.12,t+i*0.1));
+}
+
+function sfxGameOver() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  [440,370,330,220].forEach((f,i) => playTone(f,'sawtooth',0.3,0.14,t+i*0.18));
+}
+
+function sfxVictory() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  [523,659,784,1047,784,1047,1319].forEach((f,i) => playTone(f,'sine',0.25,0.14,t+i*0.1));
+}
+
+function sfxLevelIntro() {
+  const ctx = getAudio();
+  const t = ctx.currentTime;
+  playTone(660,'sine',0.2,0.1,t);
+  playTone(880,'sine',0.2,0.1,t+0.15);
+}
+
+// ─── LEVEL CONFIGS ───────────────────────────
+const LEVEL_CONFIGS = [
+  { name:'Daraja 1', desc:'Sekin to\'g\'ri o\'q-dorilar', tip:'Boshlang\'ich daraja — bir tomondan hujum',
+    spawnInterval:2000, speed:2.5, patterns:['straight'], dirs:1 },
+  { name:'Daraja 2', desc:'Tezroq to\'g\'ri o\'q-dorilar', tip:'Tezlik oshdi, diqqatli bo\'ling!',
+    spawnInterval:1500, speed:3.5, patterns:['straight'], dirs:1 },
+  { name:'Daraja 3', desc:'Ikki tomondan hujum', tip:'O\'q-dorilar ikki tomondan keladi',
+    spawnInterval:1200, speed:4, patterns:['straight'], dirs:2 },
+  { name:'Daraja 4', desc:'Kuzatuvchi o\'q-dorilar', tip:'Doira chizib harakatlaning — to\'g\'ri qochish kerak!',
+    spawnInterval:1000, speed:3, patterns:['homing'], dirs:4 },
+  { name:'Daraja 5', desc:'Aralash hujum', tip:'To\'g\'ri va kuzatuvchi o\'q-dorilar birga keladi',
+    spawnInterval:800, speed:4.5, patterns:['straight','homing'], dirs:3 },
+  { name:'Daraja 6', desc:'Spiral o\'q-dorilar', tip:'Markazdan chetga qarab yuring',
+    spawnInterval:700, speed:4, patterns:['spiral'], dirs:4 },
+  { name:'Daraja 7', desc:'Yomg\'ir rejimi', tip:'Chapga-o\'ngga suzib yuring — pastga tushmang!',
+    spawnInterval:300, speed:5, patterns:['rain'], dirs:1 },
+  { name:'Daraja 8', desc:'Xo\'jayin to\'lqini!', tip:'Barcha turlar birga — eng qiyin daraja!',
+    spawnInterval:300, speed:6, patterns:['straight','homing','spiral','rain'], dirs:4 },
+];
+const LEVEL_DURATION = 30000;
+
+// ─── GAME STATE ──────────────────────────────
+const GS = {
+  screen: 'start',
+  lives: 3, score: 0,
+  highScore: parseInt(localStorage.getItem('qol_highscore') || '0'),
+  level: 1, levelTimer: 0, lastTime: 0,
+  player: { x: window.innerWidth/2, y: window.innerHeight/2 },
+  handDetected: false, noHandFrames: 0,
+  bullets: [], particles: [],
+  flashTimer: 0, invincible: 0,
+  spawnTimer: 0, spiralAngle: 0,
+  landmarks: null,
+  lastVideoFrame: null,   // ImageBitmap of last webcam frame
+};
+
+// ─── UI HELPERS ──────────────────────────────
+function showScreen(id) {
+  ['startScreen','countdownScreen','levelIntroScreen','levelUpScreen','gameOverScreen','victoryScreen']
+    .forEach(s => document.getElementById(s).style.display = 'none');
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('instrBtn').style.display = 'none';
+  if (id) document.getElementById(id).style.display = 'flex';
+}
+function updateHUD() {
+  ['h1','h2','h3'].forEach((id,i) =>
+    document.getElementById(id).classList.toggle('lost', i >= GS.lives));
+  document.getElementById('hud-level').textContent = LEVEL_CONFIGS[GS.level-1].name;
+  document.getElementById('hud-score').textContent = 'Ball: ' + GS.score;
+}
+function showHUD() {
+  document.getElementById('hud').style.display = 'flex';
+  document.getElementById('instrBtn').style.display = 'block';
+}
+const noHandWarnEl = document.getElementById('no-hand-warn');
+
+// ─── INSTRUCTIONS MODAL ──────────────────────
+document.getElementById('instrBtn').addEventListener('click', () => {
+  document.getElementById('instrModal').classList.add('open');
+});
+document.getElementById('instrModalClose').addEventListener('click', () => {
+  document.getElementById('instrModal').classList.remove('open');
+});
+document.getElementById('goInstrBtn').addEventListener('click', () => {
+  document.getElementById('instrModal').classList.add('open');
+});
+
+// ─── BULLET FACTORY ──────────────────────────
+function spawnBullet(pattern, cfg) {
+  const W = gameCanvas.width, H = gameCanvas.height;
+  const px = GS.player.x, py = GS.player.y;
+  let b = { x:0, y:0, vx:0, vy:0, r:8, type:pattern, alive:true, homingStr:0 };
+
+  if (pattern === 'straight' || pattern === 'homing') {
+    const edges = ['top','bottom','left','right'];
+    const edge = edges[Math.floor(Math.random() * Math.min(cfg.dirs, 4))];
+    if (edge==='top')    { b.x=Math.random()*W; b.y=-10; }
+    if (edge==='bottom') { b.x=Math.random()*W; b.y=H+10; }
+    if (edge==='left')   { b.x=-10; b.y=Math.random()*H; }
+    if (edge==='right')  { b.x=W+10; b.y=Math.random()*H; }
+    const dx=px-b.x, dy=py-b.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+    b.vx=(dx/dist)*cfg.speed; b.vy=(dy/dist)*cfg.speed;
+    if (pattern==='homing') b.homingStr = 0.04;
+  }
+  if (pattern === 'spiral') {
+    b.x=W/2; b.y=H/2;
+    b.vx=Math.cos(GS.spiralAngle)*cfg.speed;
+    b.vy=Math.sin(GS.spiralAngle)*cfg.speed;
+    GS.spiralAngle += 0.35;
+  }
+  if (pattern === 'rain') {
+    b.x=Math.random()*W; b.y=-10;
+    b.vx=(Math.random()-0.5)*1.5; b.vy=cfg.speed;
+  }
+  b.color = {straight:'#ff3333',homing:'#ff8c00',spiral:'#cc44ff',rain:'#ff3399'}[pattern];
+  GS.bullets.push(b);
+}
+
+// ─── PARTICLES ───────────────────────────────
+function spawnParticles(x, y, color, count) {
+  for (let i=0;i<count;i++) {
+    const a=Math.random()*Math.PI*2, s=1+Math.random()*4;
+    GS.particles.push({
+      x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+      life:1, decay:0.025+Math.random()*0.03,
+      r:2+Math.random()*3, color
+    });
+  }
+}
+
+// ─── COLLISION ───────────────────────────────
+const PLAYER_RADIUS = 15;
+const NEAR_MISS_RADIUS = 55;
+
+function checkCollisions() {
+  if (GS.invincible > 0) return;
+  const px=GS.player.x, py=GS.player.y;
+  GS.bullets.forEach(b => {
+    if (!b.alive) return;
+    const dx=b.x-px, dy=b.y-py, dist=Math.sqrt(dx*dx+dy*dy);
+    if (dist < PLAYER_RADIUS + b.r) {
+      b.alive = false;
+      spawnParticles(b.x, b.y, b.color, 18);
+      sfxHit();
+      GS.lives--;
+      GS.flashTimer = 60;
+      GS.invincible = 90;
+      updateHUD();
+      if (GS.lives <= 0) setTimeout(() => endGame('over'), 400);
+    } else if (dist < NEAR_MISS_RADIUS + b.r && !b._nearMiss) {
+      b._nearMiss = true;
+      GS.score += 5;
+      spawnParticles(b.x, b.y, '#ffffff', 6);
+      sfxNearMiss();
+      updateHUD();
+    }
+  });
+}
+
+// ─── UPDATE ──────────────────────────────────
+function update(dt) {
+  if (GS.screen !== 'playing') return;
+  GS.levelTimer += dt;
+  GS.spawnTimer += dt;
+  GS.score += Math.floor(dt * 0.01);
+  if (GS.flashTimer > 0) GS.flashTimer--;
+  if (GS.invincible > 0) GS.invincible--;
+  GS.noHandFrames = GS.handDetected ? 0 : GS.noHandFrames + 1;
+  noHandWarnEl.style.opacity = GS.noHandFrames > 60 ? '1' : '0';
+
+  const cfg = LEVEL_CONFIGS[GS.level-1];
+  if (GS.spawnTimer >= cfg.spawnInterval) {
+    GS.spawnTimer = 0;
+    const pats = cfg.patterns;
+    spawnBullet(pats[Math.floor(Math.random()*pats.length)], cfg);
+    if (GS.level === 8 && Math.random() < 0.5)
+      spawnBullet(pats[Math.floor(Math.random()*pats.length)], cfg);
+  }
+
+  const W=gameCanvas.width, H=gameCanvas.height;
+  GS.bullets.forEach(b => {
+    if (!b.alive) return;
+    if (b.homingStr > 0) {
+      const dx=GS.player.x-b.x, dy=GS.player.y-b.y, dist=Math.sqrt(dx*dx+dy*dy)||1;
+      b.vx += (dx/dist)*b.homingStr;
+      b.vy += (dy/dist)*b.homingStr;
+      const spd=Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+      if (spd > cfg.speed*1.4) { b.vx=(b.vx/spd)*cfg.speed*1.4; b.vy=(b.vy/spd)*cfg.speed*1.4; }
+    }
+    b.x+=b.vx; b.y+=b.vy;
+    if (b.x<-60||b.x>W+60||b.y<-60||b.y>H+60) b.alive=false;
+  });
+  GS.bullets = GS.bullets.filter(b=>b.alive);
+
+  GS.particles.forEach(p => {
+    p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94; p.life-=p.decay;
+  });
+  GS.particles = GS.particles.filter(p=>p.life>0);
+
+  checkCollisions();
+
+  if (GS.levelTimer >= LEVEL_DURATION) {
+    GS.levelTimer = 0; GS.spawnTimer = 0; GS.bullets = [];
+    if (GS.level >= 8) {
+      endGame('victory');
+    } else {
+      GS.score += 200;
+      GS.level++;
+      updateHUD();
+      showLevelUp();
+    }
+  }
+  updateHUD();
+}
+
+// ─── RENDER ──────────────────────────────────
+function render() {
+  const W=gameCanvas.width, H=gameCanvas.height;
+
+  // Draw video frame every render tick (no flicker)
+  vctx.save();
+  vctx.translate(W,0); vctx.scale(-1,1);
+  if (GS.lastVideoFrame) {
+    vctx.drawImage(GS.lastVideoFrame, 0, 0, W, H);
+  } else {
+    vctx.fillStyle='#111';
+    vctx.fillRect(0,0,W,H);
+  }
+  vctx.restore();
+  // dark overlay once per frame, consistent alpha
+  vctx.fillStyle='rgba(0,0,0,0.42)';
+  vctx.fillRect(0,0,W,H);
+
+  gctx.clearRect(0,0,W,H);
+
+  if (GS.screen !== 'playing') return;
+
+  // red flash
+  if (GS.flashTimer > 0) {
+    gctx.fillStyle=`rgba(255,0,0,${(GS.flashTimer/60)*0.38})`;
+    gctx.fillRect(0,0,W,H);
+  }
+
+  // particles
+  GS.particles.forEach(p => {
+    gctx.save();
+    gctx.globalAlpha=p.life;
+    gctx.fillStyle=p.color;
+    gctx.shadowColor=p.color; gctx.shadowBlur=8;
+    gctx.beginPath(); gctx.arc(p.x,p.y,p.r,0,Math.PI*2); gctx.fill();
+    gctx.restore();
+  });
+
+  // bullets
+  GS.bullets.forEach(b => {
+    gctx.save();
+    gctx.shadowColor=b.color; gctx.shadowBlur=15;
+    gctx.fillStyle=b.color;
+    gctx.beginPath(); gctx.arc(b.x,b.y,b.r,0,Math.PI*2); gctx.fill();
+    gctx.fillStyle='#fff';
+    gctx.beginPath(); gctx.arc(b.x,b.y,b.r*0.4,0,Math.PI*2); gctx.fill();
+    gctx.restore();
+  });
+
+  // player
+  const px=GS.player.x, py=GS.player.y;
+  const pulse=0.7+0.3*Math.sin(Date.now()*0.008);
+  const blink=GS.invincible>0 && Math.floor(GS.invincible/8)%2===0;
+  if (!blink) {
+    gctx.save();
+    for (let i=3;i>=1;i--) {
+      gctx.beginPath(); gctx.arc(px,py,PLAYER_RADIUS+i*8*pulse,0,Math.PI*2);
+      gctx.strokeStyle=`rgba(0,255,204,${0.08*i})`;
+      gctx.lineWidth=4; gctx.shadowColor='#00ffcc'; gctx.shadowBlur=20;
+      gctx.stroke();
+    }
+    gctx.shadowColor='#00ffcc'; gctx.shadowBlur=30;
+    gctx.fillStyle='#00ffcc';
+    gctx.beginPath(); gctx.arc(px,py,PLAYER_RADIUS,0,Math.PI*2); gctx.fill();
+    gctx.fillStyle='#fff';
+    gctx.beginPath(); gctx.arc(px-4,py-4,5,0,Math.PI*2); gctx.fill();
+    gctx.restore();
+  }
+
+  // hand landmark overlay
+  if (GS.landmarks) {
+    gctx.save(); gctx.globalAlpha=0.45;
+    GS.landmarks.forEach(lm => {
+      const lx=(1-lm.x)*W, ly=lm.y*H;
+      gctx.fillStyle='#00ffcc'; gctx.shadowColor='#00ffcc'; gctx.shadowBlur=6;
+      gctx.beginPath(); gctx.arc(lx,ly,3,0,Math.PI*2); gctx.fill();
+    });
+    gctx.restore();
+  }
+
+  // level progress bar
+  const prog=GS.levelTimer/LEVEL_DURATION;
+  gctx.fillStyle='rgba(255,255,255,0.08)'; gctx.fillRect(0,H-6,W,6);
+  gctx.fillStyle='#ffe066'; gctx.shadowColor='#ffe066'; gctx.shadowBlur=8;
+  gctx.fillRect(0,H-6,W*prog,6); gctx.shadowBlur=0;
+}
+
+// ─── MAIN LOOP ───────────────────────────────
+function loop(ts) {
+  const dt=ts-(GS.lastTime||ts);
+  GS.lastTime=ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ─── GAME FLOW ───────────────────────────────
+function startCountdown() {
+  GS.screen='countdown';
+  showScreen('countdownScreen');
+  GS.countdownVal=3;
+  document.getElementById('countNum').textContent='3';
+  sfxCountdownBeep(false);
+  const tick=()=>{
+    GS.countdownVal--;
+    if (GS.countdownVal===0) {
+      document.getElementById('countNum').textContent='GA!';
+      sfxCountdownBeep(true);
+      setTimeout(startLevel,700);
+    } else {
+      document.getElementById('countNum').textContent=GS.countdownVal;
+      sfxCountdownBeep(false);
+      setTimeout(tick,900);
+    }
+  };
+  setTimeout(tick,900);
+}
+
+function showLevelIntro(cb) {
+  GS.screen='levelIntro';
+  showScreen('levelIntroScreen');
+  const cfg=LEVEL_CONFIGS[GS.level-1];
+  document.getElementById('levelIntroTitle').textContent=cfg.name;
+  document.getElementById('levelIntroDesc').textContent=cfg.desc;
+  document.getElementById('levelIntroTip').textContent=cfg.tip||'';
+  sfxLevelIntro();
+  setTimeout(cb,2000);
+}
+
+function showLevelUp() {
+  GS.screen='levelUp';
+  showScreen('levelUpScreen');
+  document.getElementById('levelUpMsg').textContent=
+    LEVEL_CONFIGS[GS.level-1].name+' boshlanmoqda...';
+  sfxLevelUp();
+  setTimeout(()=>showLevelIntro(startLevel),1500);
+}
+
+function startLevel() {
+  GS.screen='playing';
+  GS.bullets=[]; GS.particles=[];
+  GS.spawnTimer=0; GS.levelTimer=0;
+  GS.flashTimer=0; GS.invincible=0; GS.spiralAngle=0;
+  showScreen(null);
+  showHUD();
+  updateHUD();
+}
+
+function startGame() {
+  GS.lives=3; GS.score=0; GS.level=1;
+  GS.bullets=[]; GS.particles=[];
+  GS.spawnTimer=0; GS.levelTimer=0;
+  GS.flashTimer=0; GS.invincible=0; GS.spiralAngle=0;
+  GS.handDetected=false; GS.noHandFrames=0;
+  startCountdown();
+}
+
+function endGame(type) {
+  if (GS.score>GS.highScore) {
+    GS.highScore=GS.score;
+    localStorage.setItem('qol_highscore',GS.highScore);
+  }
+  if (type==='over') {
+    GS.screen='gameOver';
+    document.getElementById('goScore').textContent='Ballingiz: '+GS.score;
+    document.getElementById('goHigh').textContent='Eng yuqori ball: '+GS.highScore;
+    showScreen('gameOverScreen');
+    sfxGameOver();
+  } else {
+    GS.screen='victory';
+    document.getElementById('vicScore').textContent='Ballingiz: '+GS.score;
+    document.getElementById('vicHigh').textContent='Eng yuqori ball: '+GS.highScore;
+    showScreen('victoryScreen');
+    sfxVictory();
+  }
+}
+
+// ─── BUTTONS ─────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', ()=>{ showLevelIntro(()=>startGame()); });
+document.getElementById('restartBtn').addEventListener('click', ()=>{ showLevelIntro(()=>startGame()); });
+document.getElementById('vicRestartBtn').addEventListener('click', ()=>{ showLevelIntro(()=>startGame()); });
+
+// ─── MEDIAPIPE ───────────────────────────────
+const videoEl = document.createElement('video');
+videoEl.setAttribute('playsinline','');
+
+const hands = new Hands({ locateFile: f=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({
+  maxNumHands:1, modelComplexity:0,
+  minDetectionConfidence:0.6, minTrackingConfidence:0.5,
+});
+
+hands.onResults(results => {
+  // Store latest frame for stable render (no flicker)
+  GS.lastVideoFrame = results.image;
+
+  const W=videoCanvas.width, H=videoCanvas.height;
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length>0) {
+    const lms=results.multiHandLandmarks[0];
+    GS.landmarks=lms;
+    GS.handDetected=true;
+    const tip=lms[8];
+    GS.player.x=(1-tip.x)*W;
+    GS.player.y=tip.y*H;
+  } else {
+    GS.handDetected=false;
+    GS.landmarks=null;
+  }
+});
+
+const camera = new Camera(videoEl, {
+  onFrame: async ()=>{ await hands.send({ image: videoEl }); },
+  width:1280, height:720, facingMode:'user',
+});
+camera.start();
+
+// ─── START ───────────────────────────────────
+GS.screen='start';
+showScreen('startScreen');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
